@@ -1,9 +1,10 @@
 #!/usr/bin/env python
+import sys
+import os
 import logging
 
 from errno import ENOENT
 from stat import S_IFDIR, S_IFREG
-from sys import argv, exit
 from time import time
 
 from fuse import FUSE, FuseOSError, Operations, LoggingMixIn, fuse_get_context
@@ -11,7 +12,8 @@ from fuse import FUSE, FuseOSError, Operations, LoggingMixIn, fuse_get_context
 
 class CfgFS(LoggingMixIn, Operations):
     def __init__(self):
-        self._uid, self._gid, _ = fuse_get_context()
+        self._uid = os.getuid()
+        self._gid = os.getgid()
         self.cfg = {
             'a': 123123123,
             'bbb': 'glk13grj13gijioqwroroijgoqreegq',
@@ -69,10 +71,10 @@ class CfgFS(LoggingMixIn, Operations):
 
 
 if __name__ == '__main__':
-    if len(argv) != 2:
+    if len(sys.argv) != 2:
         print('usage: %s <mountpoint>' % argv[0])
-        exit(1)
+        sys.exit(1)
 
     logging.basicConfig(level=logging.DEBUG)
 
-    fuse = FUSE(CfgFS(), argv[1], foreground=True, ro=True, allow_other=True)
+    fuse = FUSE(CfgFS(), sys.argv[1], foreground=True, ro=True, allow_other=True)
