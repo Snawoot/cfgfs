@@ -14,6 +14,11 @@ POOL_TIMEOUT=3
 CONN_TIMEOUT=3
 
 class CfgFS(LoggingMixIn, Operations):
+    class _opened_file(object):
+        def __init__(self, data, ts):
+            self.data = data
+            self.ts = ts
+
     def __init__(self, redis_url):
         self._redis_pool = redis.BlockingConnectionPool.from_url(
             redis_url, timeout = POOL_TIMEOUT) 
@@ -23,6 +28,18 @@ class CfgFS(LoggingMixIn, Operations):
         self._files = {}
 
     def getattr(self, path, fh=None):
+        if fh in self._files:
+            return {
+                'st_mode': (S_IFREG | 0o444),
+                'st_size': len(self._files[fh].data),
+                'st_uid': self._uid,
+                'st_gid': self._gid,
+                'st_nlink': 1,
+                'st_ctime': self._files[fh].ts,
+                'st_mtime': self._files[fh].ts,
+                'st_atime': self._files[fh].ts,
+            }
+
         if path == '/':
             st = {
                 'st_mode': (S_IFDIR | 0o555),
@@ -49,7 +66,7 @@ class CfgFS(LoggingMixIn, Operations):
 
     def read(self, path, size, offset, fh):
         if fh in self._files:
-            return self._files[fh][offset:(offset+size)]
+            return self._files[fh].data[offset:(offset+size)]
         else:
             raise FuseOSError(errno.EBADFD)
 
@@ -71,7 +88,7 @@ class CfgFS(LoggingMixIn, Operations):
         fn = 0
         while fn in self._files:
             fn += 1
-        self._files[fn] = data
+        self._files[fn] = self._opened_file(data, time())
         return fn
 
     def release(self, path, fh):
@@ -90,9 +107,9 @@ class CfgFS(LoggingMixIn, Operations):
 
 if __name__ == '__main__':
     if len(sys.argv) < 2:
-        print('usage: %s <mountpoint> <redis URL>' % sys.argv[0])
+        print('usage: %s <redis URL> <mountpoint>' % sys.argv[0])
         sys.exit(1)
 
     logging.basicConfig(level=logging.DEBUG)
 
-    fuse = FUSE(CfgFS(sys.argv[2]), sys.argv[1], foreground=True, ro=True, allow_other=True, nonempty=True)
+    fuse = FUSE(CfgFS(sys.argv[1]), sys.argv[2], foreground=True, ro=True, allow_other=True, nonempty=True)
