@@ -72,7 +72,7 @@ class CfgFS(LoggingMixIn, Operations):
 
 if __name__ == '__main__':
     if len(sys.argv) != 2:
-        print('usage: %s <mountpoint>' % argv[0])
+        print('usage: %s <mountpoint>' % sys.argv[0])
         sys.exit(1)
 
     logging.basicConfig(level=logging.DEBUG)
