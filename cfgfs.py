@@ -15,7 +15,7 @@ try:
     OldLoggerClass = logging.getLoggerClass()
     class LoggerTemplate(OldLoggerClass):
         def __init__(self, name):
-            logging.Logger.__init__(self, "cfgfs")
+            OldLoggerClass.__init__(self, "cfgfs")
             handler = logging.handlers.SysLogHandler(address = '/dev/log')
             handler.setFormatter(logging.Formatter("%(name)s:%(levelname)s:%(message)s"))
             self.addHandler(handler)
