@@ -1,12 +1,27 @@
 #!/usr/bin/env python
 import sys
 import os
+import os.path
 import logging
+import logging.handlers
 import redis
 
 import errno
 from stat import S_IFDIR, S_IFREG
 from time import time
+
+logging._acquireLock()
+try:
+    OldLoggerClass = logging.getLoggerClass()
+    class LoggerTemplate(OldLoggerClass):
+        def __init__(self, name):
+            logging.Logger.__init__(self, "cfgfs")
+            handler = logging.handlers.SysLogHandler(address = '/dev/log')
+            handler.setFormatter(logging.Formatter("%(name)s:%(levelname)s:%(message)s"))
+            self.addHandler(handler)
+    logging.setLoggerClass(LoggerTemplate)
+finally:
+    logging._releaseLock()
 
 from fuse import FUSE, FuseOSError, Operations, LoggingMixIn, fuse_get_context
 
