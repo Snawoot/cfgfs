@@ -127,4 +127,4 @@ if __name__ == '__main__':
 
     logging.basicConfig(level=logging.DEBUG)
 
-    fuse = FUSE(CfgFS(sys.argv[1]), sys.argv[2], foreground=True, ro=True, allow_other=True, nonempty=True)
+    fuse = FUSE(CfgFS(sys.argv[1]), sys.argv[2], foreground=False, ro=True, allow_other=True, nonempty=True)
