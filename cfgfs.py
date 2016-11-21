@@ -2,24 +2,25 @@
 import sys
 import os
 import logging
+import redis
 
-from errno import ENOENT
+import errno
 from stat import S_IFDIR, S_IFREG
 from time import time
 
 from fuse import FUSE, FuseOSError, Operations, LoggingMixIn, fuse_get_context
 
+POOL_TIMEOUT=3
+CONN_TIMEOUT=3
 
 class CfgFS(LoggingMixIn, Operations):
-    def __init__(self):
+    def __init__(self, redis_url):
+        self._redis_pool = redis.BlockingConnectionPool.from_url(
+            redis_url, timeout = POOL_TIMEOUT) 
+
         self._uid = os.getuid()
         self._gid = os.getgid()
-        self.cfg = {
-            'a': 123123123,
-            'bbb': 'glk13grj13gijioqwroroijgoqreegq',
-            'c': '232ewedfwffdsfsdf2fefwef',
-            'hello': 'world',
-        }
+        self._files = {}
 
     def getattr(self, path, fh=None):
         if path == '/':
@@ -31,8 +32,9 @@ class CfgFS(LoggingMixIn, Operations):
             }
         else:
             key = path[1:]
-            if path[0] == '/' and key in self.cfg:
-                size = len(str(self.cfg[path[1:]]))
+            r = redis.StrictRedis(connection_pool = self._redis_pool)
+            if path[0] == '/' and r.exists(key):
+                size = r.strlen(key)
                 st = {
                     'st_mode': (S_IFREG | 0o444),
                     'st_size': size,
@@ -41,40 +43,56 @@ class CfgFS(LoggingMixIn, Operations):
                     'st_nlink': 1
                 }
             else:
-                raise FuseOSError(ENOENT)
+                raise FuseOSError(errno.ENOENT)
         st['st_ctime'] = st['st_mtime'] = st['st_atime'] = time()
         return st
 
     def read(self, path, size, offset, fh):
-        key = path[1:]
-        if path[0] == '/' and key in self.cfg:
-            return str(self.cfg[key])[offset:(offset+size)]
+        if fh in self._files:
+            return self._files[fh][offset:(offset+size)]
         else:
-            raise RuntimeError('unexpected path: %r' % path)
+            raise FuseOSError(errno.EBADFD)
 
     def readdir(self, path, fh):
         if path == '/':
-            return ['.', '..'] + self.cfg.keys()
+            r = redis.StrictRedis(connection_pool = self._redis_pool)
+            keys = list(set(r.scan_iter()))
+            return ['.', '..'] + keys
         else:
-            raise RuntimeError('unexpected path: %r' % path)
+            raise FuseOSError(errno.ENOENT)
+
+    def open(self, path, flags):
+        key = path[1:]
+        r = redis.StrictRedis(connection_pool = self._redis_pool)
+        data = r.get(key)
+        if data is None:
+            raise FuseOSError(errno.ENOENT)
+
+        fn = 0
+        while fn in self._files:
+            fn += 1
+        self._files[fn] = data
+        return fn
+
+    def release(self, path, fh):
+        self._files.pop(fh, None)
+
 
     # Disable unused operations:
     access = None
     flush = None
     getxattr = None
     listxattr = None
-    open = None
     opendir = None
-    release = None
     releasedir = None
     statfs = None
 
 
 if __name__ == '__main__':
-    if len(sys.argv) != 2:
-        print('usage: %s <mountpoint>' % sys.argv[0])
+    if len(sys.argv) < 2:
+        print('usage: %s <mountpoint> <redis URL>' % sys.argv[0])
         sys.exit(1)
 
     logging.basicConfig(level=logging.DEBUG)
 
-    fuse = FUSE(CfgFS(), sys.argv[1], foreground=True, ro=True, allow_other=True, nonempty=True)
+    fuse = FUSE(CfgFS(sys.argv[2]), sys.argv[1], foreground=True, ro=True, allow_other=True, nonempty=True)
